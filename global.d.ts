@@ -42,6 +42,7 @@ type GameOptions = {
   answerTimeout?: number;
   // timeout to use for final wagers and answers (all players participate)
   finalTimeout?: number;
+  singlePlayer?: boolean;
 };
 
 type RoundName = "start" | "jeopardy" | "double" | "triple" | "final" | "end";

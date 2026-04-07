@@ -2,7 +2,7 @@ import React, { useCallback } from "react";
 import { serverPath } from "../../utils";
 import { Button, ActionIcon } from "@mantine/core";
 import "../Jeopardy/Jeopardy.css";
-import { IconBrandGithub, IconCirclePlusFilled } from "@tabler/icons-react";
+import { IconBrandGithub, IconCirclePlusFilled, IconUser } from "@tabler/icons-react";
 import "./TopBar.css";
 
 export function NewRoomButton({ size }: { size?: string }) {
@@ -28,6 +28,34 @@ export function NewRoomButton({ size }: { size?: string }) {
       leftSection={<IconCirclePlusFilled />}
     >
       New Room
+    </Button>
+  );
+}
+
+export function PlaySoloButton({ size }: { size?: string }) {
+  const createSoloRoom = useCallback(async () => {
+    const response = await fetch(serverPath + "/createRoom", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    const data = await response.json();
+    const { name } = data;
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set("game", name);
+    searchParams.set("solo", "true");
+    window.location.search = searchParams.toString();
+  }, []);
+  return (
+    <Button
+      color="teal"
+      size={size}
+      onClick={createSoloRoom}
+      leftSection={<IconUser />}
+    >
+      Play Solo
     </Button>
   );
 }

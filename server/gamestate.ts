@@ -70,6 +70,8 @@ export const getGameState = (
       info: options.info,
       board: {} as { [key: string]: Question },
       scores: {} as Record<string, number>, // player scores
+      coryatScores: {} as Record<string, number>,
+      singlePlayer: false,
       round: "start" as RoundName,
       picker: undefined as string | undefined, // If null let anyone pick, otherwise last correct answer
       // below is populated in emitstate from settings

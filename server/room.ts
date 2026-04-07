@@ -114,6 +114,7 @@ export class Room {
           spectator: false,
         });
         this.jpd.public.scores[clientId] = 0;
+        this.jpd.public.coryatScores[clientId] = 0;
       } else {
         // Reconnecting user
         this.roster[existingIndex].connected = true;
@@ -500,6 +501,7 @@ export class Room {
       finalTimeout,
       makeMeHost,
       allowMultipleCorrect,
+      singlePlayer,
     } = options;
     console.log("[LOADEPISODE]", number, filter, Boolean(custom));
     let loadedData = null;
@@ -614,7 +616,13 @@ export class Room {
         final,
       );
       this.jpdSnapshot = undefined;
-      this.settings.host = makeMeHost ? clientId : undefined;
+      if (singlePlayer) {
+        this.jpd.public.singlePlayer = true;
+        this.settings.host = clientId;
+        this.settings.enableAIJudge = true;
+      } else {
+        this.settings.host = makeMeHost ? clientId : undefined;
+      }
       this.settings.allowMultipleCorrect = Boolean(allowMultipleCorrect);
       if (Number(finalTimeout)) {
         this.settings.finalTimeout = Number(finalTimeout) * 1000;
@@ -939,6 +947,18 @@ export class Room {
         this.jpd.stats.incorrect[id] = (this.jpd.stats.incorrect[id] ?? 0) + 1;
       }
       this.jpd.public.scores[id] -= delta;
+    }
+    // Coryat scoring: use face value (not wagers), skip Final Jeopardy
+    if (this.jpd.public.singlePlayer && this.jpd.public.round !== "final" && correct != null) {
+      if (!this.jpd.public.coryatScores[id]) {
+        this.jpd.public.coryatScores[id] = 0;
+      }
+      const coryatDelta = this.jpd.public.currentValue;
+      if (correct === true) {
+        this.jpd.public.coryatScores[id] += coryatDelta;
+      } else if (correct === false) {
+        this.jpd.public.coryatScores[id] -= coryatDelta;
+      }
     }
     // If null/undefined, don't change scores
     if (correct != null) {

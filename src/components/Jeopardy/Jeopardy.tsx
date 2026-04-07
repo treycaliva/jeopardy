@@ -22,6 +22,9 @@ import {
   generateName,
   serverPath,
   getOrCreateClientId,
+  saveGameResult,
+  loadGameHistory,
+  getHistoryStats,
 } from "../../utils";
 import { io, type Socket } from "socket.io-client";
 import { type PublicGameState } from "../../../server/gamestate";
@@ -67,18 +70,23 @@ type GameSettings = {
   finalTimeout?: number;
   makeMeHost?: boolean;
   allowMultipleCorrect?: boolean;
+  singlePlayer?: boolean;
 };
 
 const loadSavedSettings = (): GameSettings => {
   try {
     const saved = window.localStorage.getItem("jeopardy-gameSettings");
     if (saved) {
-      return JSON.parse(saved);
+      const settings = JSON.parse(saved);
+      if (isSoloFromUrl) {
+        settings.singlePlayer = true;
+      }
+      return settings;
     }
   } catch (e) {
     console.log(e);
   }
-  return {};
+  return isSoloFromUrl ? { singlePlayer: true } : {};
 };
 
 // room ID from url
@@ -87,6 +95,14 @@ const urlParams = new URLSearchParams(window.location.search);
 const query = urlParams.get("game");
 if (query) {
   roomId = "/" + query;
+}
+const isSoloFromUrl = urlParams.get("solo") === "true";
+
+function getReactionTimeColor(ms: number): string {
+  if (ms <= 0) return "inherit";
+  if (ms < 2000) return "#40c057"; // green - good
+  if (ms < 4000) return "#fab005"; // yellow - ok
+  return "#fa5252"; // red - poor
 }
 
 export class Jeopardy extends React.Component<{
@@ -174,6 +190,32 @@ export class Jeopardy extends React.Component<{
       this.props.setScrollTimestamp(0);
     });
     socket.on("JPD:state", (game: PublicGameState) => {
+      // Save single player history when game ends
+      if (game.singlePlayer && game.round === "end" && this.state.game?.round !== "end") {
+        const myId = getOrCreateClientId();
+        const reactionTimes = game.stats?.reactionTimes?.[myId] ?? [];
+        const avgReaction = reactionTimes.length > 0
+          ? reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length
+          : 0;
+        const breakdown = { good: 0, ok: 0, poor: 0 };
+        for (const rt of reactionTimes) {
+          if (rt < 2000) breakdown.good++;
+          else if (rt < 4000) breakdown.ok++;
+          else breakdown.poor++;
+        }
+        saveGameResult({
+          date: new Date().toISOString(),
+          epNum: game.epNum ?? "Unknown",
+          airDate: game.airDate,
+          score: game.scores[myId] ?? 0,
+          coryatScore: game.coryatScores[myId] ?? 0,
+          questions: game.stats?.questions ?? 0,
+          correct: game.stats?.correct?.[myId] ?? 0,
+          incorrect: game.stats?.incorrect?.[myId] ?? 0,
+          avgReactionMs: Math.round(avgReaction),
+          reactionBreakdown: breakdown,
+        });
+      }
       this.setState({ game, localEpNum: game.epNum });
       if (!game.currentQ) {
         this.setState({ showJudgingModal: false });
@@ -638,7 +680,11 @@ export class Jeopardy extends React.Component<{
                   <Table.Td>
                     {game.wagers[clientId] ?? game.currentValue}
                   </Table.Td>
-                  <Table.Td>
+                  <Table.Td
+                    style={game?.singlePlayer && getBuzzOffset(clientId) > 0
+                      ? { color: getReactionTimeColor(getBuzzOffset(clientId)) }
+                      : undefined}
+                  >
                     {getBuzzOffset(clientId) && getBuzzOffset(clientId) > 0
                       ? `+${(getBuzzOffset(clientId) / 1000).toFixed(3)}`
                       : ""}
@@ -1148,21 +1194,25 @@ export class Jeopardy extends React.Component<{
               )}
               {game && game.round === "end" && (
                 <div id="endgame">
-                  <h2 style={{ color: "white" }}>Winner!</h2>
-                  <div style={{ display: "flex" }}>
-                    {this.getWinners().map((winnerId: string) => (
-                      <img
-                        key={winnerId}
-                        alt=""
-                        style={{ width: "80px", height: "80px" }}
-                        src={getDefaultPicture(
-                          participants.find((p) => p.id === winnerId)?.name ??
-                            "",
-                          getColorHex(winnerId),
-                        )}
-                      />
-                    ))}
-                  </div>
+                  <h2 style={{ color: "white" }}>
+                    {game.singlePlayer ? "Game Over" : "Winner!"}
+                  </h2>
+                  {!game.singlePlayer && (
+                    <div style={{ display: "flex" }}>
+                      {this.getWinners().map((winnerId: string) => (
+                        <img
+                          key={winnerId}
+                          alt=""
+                          style={{ width: "80px", height: "80px" }}
+                          src={getDefaultPicture(
+                            participants.find((p) => p.id === winnerId)?.name ??
+                              "",
+                            getColorHex(winnerId),
+                          )}
+                        />
+                      ))}
+                    </div>
+                  )}
                   <div
                     style={{
                       flexGrow: 1,
@@ -1175,6 +1225,7 @@ export class Jeopardy extends React.Component<{
                         <Table.Tr>
                           <Table.Th>Name</Table.Th>
                           <Table.Th>Score</Table.Th>
+                          {game.singlePlayer && <Table.Th>Coryat</Table.Th>}
                           <Table.Th>Qs</Table.Th>
                           <Table.Th>Answered</Table.Th>
                           <Table.Th>Correct</Table.Th>
@@ -1186,12 +1237,18 @@ export class Jeopardy extends React.Component<{
                       </Table.Thead>
                       <Table.Tbody>
                         {participants.map((p) => {
+                          const avgReaction = (this.state.game?.stats?.reactionTimes?.[p.id]?.reduce((a, b) => a + b, 0) ?? 0) / (this.state.game?.stats?.reactionTimes?.[p.id]?.length || 1);
                           return (
                             <Table.Tr>
                               <Table.Td>{p.name}</Table.Td>
                               <Table.Td>
                                 {this.state.game?.scores[p.id] ?? 0}
                               </Table.Td>
+                              {game.singlePlayer && (
+                                <Table.Td>
+                                  {this.state.game?.coryatScores[p.id] ?? 0}
+                                </Table.Td>
+                              )}
                               <Table.Td>
                                 {this.state.game?.stats?.questions}
                               </Table.Td>
@@ -1207,8 +1264,8 @@ export class Jeopardy extends React.Component<{
                               <Table.Td>
                                 {this.state.game?.stats?.firstBuzz?.[p.id] ?? 0}
                               </Table.Td>
-                              <Table.Td>
-                                {`${((this.state.game?.stats?.reactionTimes?.[p.id]?.reduce((a, b) => a + b, 0) ?? 0) / (this.state.game?.stats?.reactionTimes?.[p.id]?.length ?? 0))?.toFixed(0)}ms`}
+                              <Table.Td style={game.singlePlayer ? { color: getReactionTimeColor(avgReaction) } : undefined}>
+                                {`${avgReaction.toFixed(0)}ms`}
                               </Table.Td>
                               <Table.Td>
                                 {this.state.game?.stats?.dailyDoubles?.[p.id] ??
@@ -1220,6 +1277,7 @@ export class Jeopardy extends React.Component<{
                       </Table.Tbody>
                     </Table>
                   </div>
+                  {game.singlePlayer && <GameHistorySummary />}
                 </div>
               )}
             </div>
@@ -1285,6 +1343,18 @@ export class Jeopardy extends React.Component<{
                   >
                     {(game?.scores[p.id] || 0).toLocaleString()}
                   </div>
+                  {game?.singlePlayer && (
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        color: (game.coryatScores[p.id] ?? 0) < 0 ? "#f03e3e" : "#adb5bd",
+                        textAlign: "center",
+                        marginTop: "-2px",
+                      }}
+                    >
+                      Coryat: {(game.coryatScores[p.id] ?? 0).toLocaleString()}
+                    </div>
+                  )}
                   <div
                     className={`answerBox ${
                       game?.buzzes[p.id] ? "buzz" : ""
@@ -1304,7 +1374,12 @@ export class Jeopardy extends React.Component<{
                         </Badge>
                       </div>
                     ) : null}
-                    <div className="timeOffset">
+                    <div
+                      className="timeOffset"
+                      style={game?.singlePlayer && this.getBuzzOffset(p.id) > 0
+                        ? { color: getReactionTimeColor(this.getBuzzOffset(p.id)) }
+                        : undefined}
+                    >
                       {this.getBuzzOffset(p.id) && this.getBuzzOffset(p.id) > 0
                         ? `+${(this.getBuzzOffset(p.id) / 1000).toFixed(3)}`
                         : ""}
@@ -1414,10 +1489,18 @@ const SettingsModal = ({
   const [allowMultipleCorrect, setAllowMultipleCorrect] = useState<
     boolean | undefined
   >(settings.allowMultipleCorrect);
+  const [singlePlayer, setSinglePlayer] = useState<boolean | undefined>(
+    settings.singlePlayer,
+  );
   return (
     <Modal opened onClose={onClose} title="Settings">
       <h4>Settings will be applied to any new games you create.</h4>
       <div style={{ gap: "4px", display: "flex", flexDirection: "column" }}>
+        <Switch
+          checked={singlePlayer}
+          onChange={(e) => setSinglePlayer(e.currentTarget.checked)}
+          label="Single player mode (Play solo with Coryat score tracking and response time feedback)"
+        />
         <Switch
           checked={makeMeHost}
           onChange={(e) => setMakeMeHost(e.currentTarget.checked)}
@@ -1477,6 +1560,7 @@ const SettingsModal = ({
               allowMultipleCorrect: Boolean(allowMultipleCorrect),
               answerTimeout: Number(answerTimeout),
               finalTimeout: Number(finalTimeout),
+              singlePlayer: Boolean(singlePlayer),
             };
             onSubmit(settings);
             onClose();
@@ -1520,6 +1604,51 @@ export const ErrorModal = ({ error }: { error: string }) => {
         </Button>
       </div>
     </Modal>
+  );
+};
+
+const GameHistorySummary = () => {
+  const stats = getHistoryStats();
+  const history = loadGameHistory();
+  const recent = history.slice(0, 5);
+  if (stats.gamesPlayed === 0) {
+    return null;
+  }
+  return (
+    <div style={{ marginTop: "16px", color: "white" }}>
+      <h3>Single Player History ({stats.gamesPlayed} games)</h3>
+      <div style={{ display: "flex", gap: "20px", marginBottom: "8px", fontSize: "14px" }}>
+        <div>Avg Coryat: <strong>{stats.avgCoryat.toLocaleString()}</strong></div>
+        <div>Best Coryat: <strong>{stats.bestCoryat.toLocaleString()}</strong></div>
+        <div>Avg Reaction: <strong style={{ color: getReactionTimeColor(stats.avgReaction) }}>{stats.avgReaction}ms</strong></div>
+      </div>
+      <Table striped>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Date</Table.Th>
+            <Table.Th>Episode</Table.Th>
+            <Table.Th>Score</Table.Th>
+            <Table.Th>Coryat</Table.Th>
+            <Table.Th>Correct</Table.Th>
+            <Table.Th>Avg Reaction</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {recent.map((entry, i) => (
+            <Table.Tr key={i}>
+              <Table.Td>{new Date(entry.date).toLocaleDateString()}</Table.Td>
+              <Table.Td>{entry.epNum}</Table.Td>
+              <Table.Td>{entry.score.toLocaleString()}</Table.Td>
+              <Table.Td>{entry.coryatScore.toLocaleString()}</Table.Td>
+              <Table.Td>{entry.correct}/{entry.questions}</Table.Td>
+              <Table.Td style={{ color: getReactionTimeColor(entry.avgReactionMs) }}>
+                {entry.avgReactionMs}ms
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </div>
   );
 };
 

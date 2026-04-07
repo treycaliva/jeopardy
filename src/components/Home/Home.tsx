@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import CountUp from "react-countup";
 
-import { NewRoomButton, JeopardyTopBar } from "../TopBar/TopBar";
+import { NewRoomButton, PlaySoloButton, JeopardyTopBar } from "../TopBar/TopBar";
 import styles from "./Home.module.css";
 import { serverPath } from "../../utils";
 import {
@@ -96,7 +96,12 @@ export const JeopardyHome = () => {
       <div className={styles.container}>
         <Hero
           heroText={"Play Jeopardy! online with friends."}
-          action={<NewRoomButton />}
+          action={
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <NewRoomButton />
+              <PlaySoloButton />
+            </div>
+          }
           image={"/screenshot3.png"}
         />
         <div className={styles.featureSection}>

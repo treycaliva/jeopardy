@@ -112,3 +112,57 @@ function uuidv4() {
     ).toString(16),
   );
 }
+
+// Single player game history persistence
+
+export interface GameHistoryEntry {
+  date: string;
+  epNum: string;
+  airDate?: string;
+  score: number;
+  coryatScore: number;
+  questions: number;
+  correct: number;
+  incorrect: number;
+  avgReactionMs: number;
+  reactionBreakdown: { good: number; ok: number; poor: number };
+}
+
+const HISTORY_KEY = "jeopardy-singlePlayerHistory";
+const MAX_HISTORY = 200;
+
+export function loadGameHistory(): GameHistoryEntry[] {
+  try {
+    const saved = window.localStorage.getItem(HISTORY_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.log(e);
+  }
+  return [];
+}
+
+export function saveGameResult(entry: GameHistoryEntry): void {
+  const history = loadGameHistory();
+  history.unshift(entry);
+  if (history.length > MAX_HISTORY) {
+    history.length = MAX_HISTORY;
+  }
+  window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+export function getHistoryStats() {
+  const history = loadGameHistory();
+  if (history.length === 0) {
+    return { gamesPlayed: 0, avgCoryat: 0, bestCoryat: 0, avgReaction: 0 };
+  }
+  const coryats = history.map((h) => h.coryatScore);
+  const reactions = history.filter((h) => h.avgReactionMs > 0).map((h) => h.avgReactionMs);
+  return {
+    gamesPlayed: history.length,
+    avgCoryat: Math.round(coryats.reduce((a, b) => a + b, 0) / coryats.length),
+    bestCoryat: Math.max(...coryats),
+    avgReaction: reactions.length > 0 ? Math.round(reactions.reduce((a, b) => a + b, 0) / reactions.length) : 0,
+  };
+}
