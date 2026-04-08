@@ -1,8 +1,8 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import config from "./config.ts";
 
-export const openai = config.OPENAI_SECRET_KEY
-  ? new OpenAI({ apiKey: config.OPENAI_SECRET_KEY })
+export const anthropic = config.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: config.ANTHROPIC_API_KEY })
   : undefined;
 
 // Notes on AI judging:
@@ -18,6 +18,7 @@ If the response is a misspelling, abbreviation, or slang of the correct answer, 
 If the response could be pronounced the same as the correct answer, consider it correct.
 If the response includes the correct answer but also other incorrect answers, consider it incorrect.
 Only if there is no way the response could be construed to be the correct answer should you consider it incorrect.
+Respond with ONLY a JSON object in this exact format: {"correct": true} or {"correct": false}
 `;
 // If the correct answer contains text in parentheses, ignore that text when making your decision.
 // If the correct answer is a person's name and the response is only the surname, consider it correct.
@@ -26,48 +27,27 @@ Only if there is no way the response could be construed to be the correct answer
 // If the response is phrased differently than the correct answer, but is clearly referring to the same thing or things, it should be considered correct.
 // Also return a number between 0 and 1 indicating how confident you are in your decision.
 
-export async function getOpenAIDecision(
+export async function getAIDecision(
   question: string,
   answer: string,
   response: string,
 ): Promise<{ correct: boolean; confidence: number } | null> {
-  if (!openai) {
+  if (!anthropic) {
     return null;
   }
   const suffix = `question: '${question}', correct: '${answer}', response: '${response}'`;
   console.log("[AIINPUT]", suffix);
-  // Concatenate the prompt and the suffix for AI completion
-  const result = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    service_tier: "auto", // Use flex processing when possible to save money
-    messages: [{ role: "developer", content: prompt + suffix }],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "trivia_judgment",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            correct: {
-              type: "boolean",
-            },
-            // confidence: {
-            //   type: 'number',
-            // },
-          },
-          required: ["correct"],
-          additionalProperties: false,
-        },
-      },
-    },
+  const result = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 32,
+    system: prompt,
+    messages: [{ role: "user", content: suffix }],
   });
   console.log(result);
-  const text = result.choices[0].message.content;
-  // The text might be invalid JSON e.g. if the model refused to respond
+  const textBlock = result.content.find((block) => block.type === "text");
   try {
-    if (text) {
-      return JSON.parse(text);
+    if (textBlock && textBlock.type === "text") {
+      return JSON.parse(textBlock.text);
     }
   } catch (e) {
     console.log(e);

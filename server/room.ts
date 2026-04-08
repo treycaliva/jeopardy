@@ -2,7 +2,7 @@ import { Socket, Server } from "socket.io";
 import Papa from "papaparse";
 import { redis, redisCount } from "./redis.ts";
 import { genAITextToSpeech } from "./aivoice.ts";
-import { getOpenAIDecision, openai } from "./openai.ts";
+import { getAIDecision, anthropic } from "./openai.ts";
 import config from "./config.ts";
 import { getGameState, getPerQuestionState } from "./gamestate.ts";
 import { getJData } from "./jData.ts";
@@ -812,7 +812,7 @@ export class Room {
       this.jpd.public.canNextQ = true;
     }
     if (
-      openai &&
+      anthropic &&
       !this.jpd.public.canNextQ &&
       this.settings.enableAIJudge &&
       // Don't use AI if the user undid
@@ -852,7 +852,7 @@ export class Room {
       // count the number of calls to chatgpt
       redisCount("aiChatGpt");
       try {
-        const decision = await getOpenAIDecision(q, a, response);
+        const decision = await getAIDecision(q, a, response);
         console.log("[AIDECISION]", id, q, a, response, decision);
         if (decision && decision.correct != null) {
           correct = decision.correct;

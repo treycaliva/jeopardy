@@ -20,7 +20,7 @@ export async function genAITextToSpeech(
       data: [
         text,
         "Trebek",
-        "en-US-ChristopherNeural",
+        "en-US-TonyNeural",
         0,
         0,
         0,

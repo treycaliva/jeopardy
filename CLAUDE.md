@@ -26,7 +26,7 @@ This is a multiplayer Jeopardy! web game with a Node.js/Hono backend and React f
 - **jData.ts** — Loads and periodically refreshes episode data from a gzipped JSON file (`jeopardy.json.gz`). In production, fetches latest from GitHub; in development (`NODE_ENV=development`), uses local file only.
 - **openai.ts** — AI judge integration using OpenAI API to evaluate answer correctness.
 - **aivoice.ts** — Text-to-speech for reading clues via OpenAI.
-- **config.ts** — Loads `.env` file via `node:process.loadEnvFile()`, merges with defaults. Key env vars: `REDIS_URL`, `OPENAI_SECRET_KEY`, `PORT` (default 8083).
+- **config.ts** — Loads `.env` file via `node:process.loadEnvFile()`, merges with defaults. Key env vars: `REDIS_URL`, `ANTHROPIC_API_KEY`, `PORT` (default 8083).
 - **redis.ts** — Optional Redis client for room persistence and analytics counters.
 - **moniker.ts** — Random room/user name generation from word lists in `words/`.
 
@@ -51,7 +51,7 @@ Client and server communicate exclusively via Socket.IO events prefixed with `CM
 ## Environment Variables
 
 - `REDIS_URL` — Redis connection for room persistence (optional; without it rooms are in-memory only)
-- `OPENAI_SECRET_KEY` — Enables AI judge and AI voice features
+- `ANTHROPIC_API_KEY` — Enables AI judge and AI voice features
 - `PORT` — Server port (default: 8083)
 - `SSL_KEY_FILE` / `SSL_CRT_FILE` — Optional HTTPS support
 - `VITE_SERVER_HOST` — Override backend URL for frontend dev
